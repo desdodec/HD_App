@@ -19,6 +19,8 @@ function AddToPlaylistDialog({ isOpen, onClose, onSave, playlists, title = 'Add 
     if (isCreatingNew) {
       if (newPlaylistName.trim()) {
         onSave({ createNew: true, name: newPlaylistName.trim() });
+        setNewPlaylistName('');
+        setIsCreatingNew(false);
         onClose();
       }
     } else {
@@ -31,6 +33,8 @@ function AddToPlaylistDialog({ isOpen, onClose, onSave, playlists, title = 'Add 
   };
 
   const handleCancel = () => {
+    setNewPlaylistName('');
+    setIsCreatingNew(false);
     onClose();
   };
 

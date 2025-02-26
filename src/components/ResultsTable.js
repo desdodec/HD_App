@@ -145,8 +145,9 @@ function ResultsTable() {
       console.log('Track added to playlist:', trackToAdd.id, 'to playlist:', playlistId);
       alert(`Track "${trackToAdd.title}" added to playlist "${playlistName}"`);
       
-      // Reset state
+      // Reset state and return focus to the main window
       setTrackToAdd(null);
+      document.getElementById('root').focus();
     } catch (error) {
       console.error('Error adding track to playlist:', error);
       alert('Error adding track to playlist');
@@ -174,8 +175,8 @@ function ResultsTable() {
         playlistName = selection.name;
       }
       
-      // Get all tracks for this album
-      const searchResults = await database.getTracks('', 'All Tracks', 'id', albumToAdd.albumPrefix);
+      // Get all tracks for this album - set limit to 1000 to ensure we get all tracks
+      const searchResults = await database.getTracks('', 'All Tracks', 'id', albumToAdd.albumPrefix, 1, 1000);
       
       // Add all tracks to playlist
       const result = await database.addAlbumToPlaylist(playlistId, albumToAdd.albumPrefix, searchResults.results);
@@ -183,8 +184,9 @@ function ResultsTable() {
       console.log('Album added to playlist:', result);
       alert(`Album "${albumToAdd.albumPrefix}" added to playlist "${playlistName}" (${result.count} tracks)`);
       
-      // Reset state
+      // Reset state and return focus to the main window
       setAlbumToAdd(null);
+      document.getElementById('root').focus();
     } catch (error) {
       console.error('Error adding album to playlist:', error);
       alert('Error adding album to playlist');
@@ -267,8 +269,13 @@ function ResultsTable() {
       React.createElement(AddToPlaylistDialog, {
         isOpen: isAddToPlaylistDialogOpen,
         onClose: () => {
+          // Close the dialog and reset state
           setIsAddToPlaylistDialogOpen(false);
-          setTrackToAdd(null);
+          setTimeout(() => {
+            setTrackToAdd(null);
+            // Return focus to the main window
+            document.getElementById('root').focus();
+          }, 100);
         },
         onSave: handleAddToPlaylistDialogSave,
         playlists: playlists,
@@ -279,8 +286,13 @@ function ResultsTable() {
       React.createElement(AddToPlaylistDialog, {
         isOpen: isAddAlbumToPlaylistDialogOpen,
         onClose: () => {
+          // Close the dialog and reset state
           setIsAddAlbumToPlaylistDialogOpen(false);
-          setAlbumToAdd(null);
+          setTimeout(() => {
+            setAlbumToAdd(null);
+            // Return focus to the main window
+            document.getElementById('root').focus();
+          }, 100);
         },
         onSave: handleAddAlbumToPlaylistDialogSave,
         playlists: playlists,
