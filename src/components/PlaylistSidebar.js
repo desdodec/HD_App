@@ -65,8 +65,13 @@ function PlaylistSidebar() {
 
   const openDeleteDialog = (playlist, event) => {
     event.stopPropagation(); // Prevent playlist selection when clicking delete
-    setPlaylistToDelete(playlist);
-    setIsDeleteDialogOpen(true);
+    event.preventDefault(); // Prevent default button behavior
+    
+    // Only open the dialog if it's not already open or if it's a different playlist
+    if (!isDeleteDialogOpen || (playlistToDelete && playlistToDelete.id !== playlist.id)) {
+      setPlaylistToDelete(playlist);
+      setIsDeleteDialogOpen(true);
+    }
   };
 
   return (
@@ -97,8 +102,20 @@ function PlaylistSidebar() {
       // Create Playlist Dialog
       React.createElement(PlaylistDialog, {
         isOpen: isCreateDialogOpen,
-        onClose: () => setIsCreateDialogOpen(false),
-        onSave: handleCreatePlaylist,
+        onClose: () => {
+          setIsCreateDialogOpen(false);
+          // Return focus to the main window after dialog closes
+          setTimeout(() => {
+            document.getElementById('root').focus();
+          }, 100);
+        },
+        onSave: (name) => {
+          handleCreatePlaylist(name);
+          // Return focus to the main window after saving
+          setTimeout(() => {
+            document.getElementById('root').focus();
+          }, 100);
+        },
         title: 'Create Playlist'
       }),
       
@@ -108,8 +125,18 @@ function PlaylistSidebar() {
         onClose: () => {
           setIsDeleteDialogOpen(false);
           setPlaylistToDelete(null);
+          // Return focus to the main window after dialog closes
+          setTimeout(() => {
+            document.getElementById('root').focus();
+          }, 100);
         },
-        onConfirm: handleDeletePlaylist,
+        onConfirm: () => {
+          handleDeletePlaylist();
+          // Return focus to the main window after confirming
+          setTimeout(() => {
+            document.getElementById('root').focus();
+          }, 100);
+        },
         message: playlistToDelete ? `Are you sure you want to delete playlist "${playlistToDelete.name}"?` : '',
         confirmText: 'Delete',
         cancelText: 'Cancel'

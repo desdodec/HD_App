@@ -22,12 +22,22 @@ function AddToPlaylistDialog({ isOpen, onClose, onSave, playlists, title = 'Add 
         setNewPlaylistName('');
         setIsCreatingNew(false);
         onClose();
+        
+        // Return focus to the main window
+        setTimeout(() => {
+          document.getElementById('root').focus();
+        }, 100);
       }
     } else {
       if (selectedPlaylistId) {
         const selectedPlaylist = playlists.find(p => p.id === parseInt(selectedPlaylistId));
         onSave({ createNew: false, playlistId: parseInt(selectedPlaylistId), name: selectedPlaylist.name });
         onClose();
+        
+        // Return focus to the main window
+        setTimeout(() => {
+          document.getElementById('root').focus();
+        }, 100);
       }
     }
   };
@@ -36,6 +46,11 @@ function AddToPlaylistDialog({ isOpen, onClose, onSave, playlists, title = 'Add 
     setNewPlaylistName('');
     setIsCreatingNew(false);
     onClose();
+    
+    // Return focus to the main window
+    setTimeout(() => {
+      document.getElementById('root').focus();
+    }, 100);
   };
 
   if (!isOpen) return null;

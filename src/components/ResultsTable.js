@@ -67,11 +67,40 @@ function ResultsTable() {
     // Get the last search parameters from the results state or elsewhere
     const lastSearchParams = results.length > 0 ? results[0].lastSearchParams : null;
     if (lastSearchParams) {
-      const { searchTerm, filter, dropdownFilterColumn, dropdownSearchTerm } = lastSearchParams;
-      const searchResults = await database.getTracks(searchTerm, filter, dropdownFilterColumn, dropdownSearchTerm, page, resultsPerPage);
-      setResults(searchResults.results);
-      setTotalPages(searchResults.totalPages);
-      setTotalResults(searchResults.totalResults);
+      // Check if this is a playlist or a search
+      if (lastSearchParams.playlistName) {
+        // This is a playlist - fetch all tracks and paginate in memory
+        const playlistTracks = await database.getPlaylistTracks(lastSearchParams.playlistName);
+        
+        if (playlistTracks.length > 0) {
+          const totalResults = playlistTracks.length;
+          const totalPages = Math.ceil(totalResults / resultsPerPage);
+          
+          // Get tracks for the requested page
+          const startIndex = (page - 1) * resultsPerPage;
+          const endIndex = Math.min(startIndex + resultsPerPage, totalResults);
+          const pageTracks = playlistTracks.slice(startIndex, endIndex);
+          
+          // Add lastSearchParams to each track for pagination
+          const tracksWithParams = pageTracks.map(track => ({
+            ...track,
+            lastSearchParams: { playlistName: lastSearchParams.playlistName }
+          }));
+          
+          setResults(tracksWithParams);
+          setTotalResults(totalResults);
+          setTotalPages(totalPages);
+          setCurrentPage(page);
+        }
+      } else {
+        // This is a search - use the database pagination
+        const { searchTerm, filter, dropdownFilterColumn, dropdownSearchTerm } = lastSearchParams;
+        const searchResults = await database.getTracks(searchTerm, filter, dropdownFilterColumn, dropdownSearchTerm, page, resultsPerPage);
+        setResults(searchResults.results);
+        setTotalPages(searchResults.totalPages);
+        setTotalResults(searchResults.totalResults);
+        setCurrentPage(page);
+      }
     }
   };
 
@@ -89,9 +118,24 @@ function ResultsTable() {
       console.log('Playlist tracks:', playlistTracks);
       
       if (playlistTracks.length > 0) {
-        setResults(playlistTracks);
-        setTotalResults(playlistTracks.length);
-        setTotalPages(Math.ceil(playlistTracks.length / resultsPerPage));
+        // Apply pagination to playlist tracks
+        const totalResults = playlistTracks.length;
+        const totalPages = Math.ceil(totalResults / resultsPerPage);
+        
+        // Get tracks for the first page
+        const startIndex = 0;
+        const endIndex = Math.min(resultsPerPage, totalResults);
+        const firstPageTracks = playlistTracks.slice(startIndex, endIndex);
+        
+        // Add lastSearchParams to each track for pagination
+        const tracksWithParams = firstPageTracks.map(track => ({
+          ...track,
+          lastSearchParams: { playlistName }
+        }));
+        
+        setResults(tracksWithParams);
+        setTotalResults(totalResults);
+        setTotalPages(totalPages);
       }
     } catch (error) {
       console.error('Error fetching playlist tracks:', error);

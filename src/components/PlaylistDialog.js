@@ -14,12 +14,22 @@ function PlaylistDialog({ isOpen, onClose, onSave, initialName = '', title = 'Cr
       onSave(playlistName);
       setPlaylistName('');
       onClose();
+      
+      // Return focus to the main window
+      setTimeout(() => {
+        document.getElementById('root').focus();
+      }, 100);
     }
   };
 
   const handleCancel = () => {
     setPlaylistName('');
     onClose();
+    
+    // Return focus to the main window
+    setTimeout(() => {
+      document.getElementById('root').focus();
+    }, 100);
   };
 
   if (!isOpen) return null;
