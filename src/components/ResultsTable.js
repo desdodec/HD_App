@@ -2,24 +2,46 @@ const React = require('react');
 const { useState, useEffect, Fragment } = React;
 const eventBus = require('../eventBus');
 const database = require('../database.cjs');
+const AddToPlaylistDialog = require('./AddToPlaylistDialog');
 
 function ResultsTable() {
   const [results, setResults] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
   const [totalResults, setTotalResults] = useState(0);
+  const [playlists, setPlaylists] = useState([]);
+  const [isAddToPlaylistDialogOpen, setIsAddToPlaylistDialogOpen] = useState(false);
+  const [isAddAlbumToPlaylistDialogOpen, setIsAddAlbumToPlaylistDialogOpen] = useState(false);
+  const [trackToAdd, setTrackToAdd] = useState(null);
+  const [albumToAdd, setAlbumToAdd] = useState(null);
   const resultsPerPage = 20; // Number of results per page
 
   useEffect(() => {
     eventBus.on('search', handleSearch);
     eventBus.on('playlistSelected', handlePlaylistSelected);
+    eventBus.on('playlistCreated', loadPlaylists);
+    eventBus.on('playlistDeleted', loadPlaylists);
+
+    // Load playlists on mount
+    loadPlaylists();
 
     return () => {
       eventBus.off('search', handleSearch);
-      eventBus.off('clearResults', handleClearResults); // Remove clearResults listener on unmount
+      eventBus.off('clearResults', handleClearResults);
       eventBus.off('playlistSelected', handlePlaylistSelected);
+      eventBus.off('playlistCreated', loadPlaylists);
+      eventBus.off('playlistDeleted', loadPlaylists);
     };
   }, []);
+
+  const loadPlaylists = async () => {
+    try {
+      const playlistsData = await database.getPlaylists();
+      setPlaylists(playlistsData);
+    } catch (error) {
+      console.error('Error loading playlists:', error);
+    }
+  };
 
   const handleClearResults = () => { // New handler for clearResults event
     console.log('ResultsTable received clearResults event'); // Added log
@@ -77,34 +99,8 @@ function ResultsTable() {
   };
 
   const handleAddTrackToPlaylist = (track) => {
-    // Show a dialog to select a playlist or create a new one
-    const playlistName = prompt('Enter playlist name to add track to:');
-    if (!playlistName) return; // User cancelled
-    
-    // Check if playlist exists
-    database.getPlaylists()
-      .then(playlists => {
-        const playlist = playlists.find(p => p.name === playlistName);
-        
-        if (playlist) {
-          // Add track to existing playlist
-          return database.addTrackToPlaylist(playlist.id, track.id, track);
-        } else {
-          // Create new playlist and add track
-          return database.createPlaylist(playlistName)
-            .then(newPlaylist => {
-              return database.addTrackToPlaylist(newPlaylist.id, track.id, track);
-            });
-        }
-      })
-      .then(result => {
-        console.log('Track added to playlist:', result);
-        alert(`Track "${track.title}" added to playlist "${playlistName}"`);
-      })
-      .catch(error => {
-        console.error('Error adding track to playlist:', error);
-        alert('Error adding track to playlist');
-      });
+    setTrackToAdd(track);
+    setIsAddToPlaylistDialogOpen(true);
   };
   
   const handleAddAlbumToPlaylist = (track) => {
@@ -115,43 +111,84 @@ function ResultsTable() {
       return;
     }
     
-    // Show a dialog to select a playlist or create a new one
-    const playlistName = prompt(`Enter playlist name to add album "${albumPrefix}" to:`);
-    if (!playlistName) return; // User cancelled
+    setAlbumToAdd({
+      track,
+      albumPrefix
+    });
+    setIsAddAlbumToPlaylistDialogOpen(true);
+  };
+  
+  const handleAddToPlaylistDialogSave = async (selection) => {
+    if (!trackToAdd) return;
     
-    // Check if playlist exists
-    database.getPlaylists()
-      .then(playlists => {
-        const playlist = playlists.find(p => p.name === playlistName);
+    try {
+      let playlistId;
+      let playlistName;
+      
+      if (selection.createNew) {
+        // Create new playlist
+        const newPlaylist = await database.createPlaylist(selection.name);
+        playlistId = newPlaylist.id;
+        playlistName = newPlaylist.name;
         
-        if (playlist) {
-          // Get all tracks for this album
-          return database.getTracks('', 'All Tracks', 'id', albumPrefix)
-            .then(searchResults => {
-              // Add all tracks to existing playlist
-              return database.addAlbumToPlaylist(playlist.id, albumPrefix, searchResults.results);
-            });
-        } else {
-          // Create new playlist
-          return database.createPlaylist(playlistName)
-            .then(newPlaylist => {
-              // Get all tracks for this album
-              return database.getTracks('', 'All Tracks', 'id', albumPrefix)
-                .then(searchResults => {
-                  // Add all tracks to new playlist
-                  return database.addAlbumToPlaylist(newPlaylist.id, albumPrefix, searchResults.results);
-                });
-            });
-        }
-      })
-      .then(result => {
-        console.log('Album added to playlist:', result);
-        alert(`Album "${albumPrefix}" added to playlist "${playlistName}" (${result.count} tracks)`);
-      })
-      .catch(error => {
-        console.error('Error adding album to playlist:', error);
-        alert('Error adding album to playlist');
-      });
+        // Emit event to update playlists in sidebar
+        eventBus.emit('playlistCreated', newPlaylist);
+      } else {
+        // Use existing playlist
+        playlistId = selection.playlistId;
+        playlistName = selection.name;
+      }
+      
+      // Add track to playlist
+      await database.addTrackToPlaylist(playlistId, trackToAdd.id, trackToAdd);
+      
+      console.log('Track added to playlist:', trackToAdd.id, 'to playlist:', playlistId);
+      alert(`Track "${trackToAdd.title}" added to playlist "${playlistName}"`);
+      
+      // Reset state
+      setTrackToAdd(null);
+    } catch (error) {
+      console.error('Error adding track to playlist:', error);
+      alert('Error adding track to playlist');
+    }
+  };
+  
+  const handleAddAlbumToPlaylistDialogSave = async (selection) => {
+    if (!albumToAdd) return;
+    
+    try {
+      let playlistId;
+      let playlistName;
+      
+      if (selection.createNew) {
+        // Create new playlist
+        const newPlaylist = await database.createPlaylist(selection.name);
+        playlistId = newPlaylist.id;
+        playlistName = newPlaylist.name;
+        
+        // Emit event to update playlists in sidebar
+        eventBus.emit('playlistCreated', newPlaylist);
+      } else {
+        // Use existing playlist
+        playlistId = selection.playlistId;
+        playlistName = selection.name;
+      }
+      
+      // Get all tracks for this album
+      const searchResults = await database.getTracks('', 'All Tracks', 'id', albumToAdd.albumPrefix);
+      
+      // Add all tracks to playlist
+      const result = await database.addAlbumToPlaylist(playlistId, albumToAdd.albumPrefix, searchResults.results);
+      
+      console.log('Album added to playlist:', result);
+      alert(`Album "${albumToAdd.albumPrefix}" added to playlist "${playlistName}" (${result.count} tracks)`);
+      
+      // Reset state
+      setAlbumToAdd(null);
+    } catch (error) {
+      console.error('Error adding album to playlist:', error);
+      alert('Error adding album to playlist');
+    }
   };
 
   const handleSearch = async (data) => {
@@ -224,7 +261,31 @@ function ResultsTable() {
             disabled: currentPage === totalPages
           }, 'Last')
         )
-      )
+      ),
+      
+      // Add to Playlist Dialog
+      React.createElement(AddToPlaylistDialog, {
+        isOpen: isAddToPlaylistDialogOpen,
+        onClose: () => {
+          setIsAddToPlaylistDialogOpen(false);
+          setTrackToAdd(null);
+        },
+        onSave: handleAddToPlaylistDialogSave,
+        playlists: playlists,
+        title: trackToAdd ? `Add "${trackToAdd.title}" to Playlist` : 'Add to Playlist'
+      }),
+      
+      // Add Album to Playlist Dialog
+      React.createElement(AddToPlaylistDialog, {
+        isOpen: isAddAlbumToPlaylistDialogOpen,
+        onClose: () => {
+          setIsAddAlbumToPlaylistDialogOpen(false);
+          setAlbumToAdd(null);
+        },
+        onSave: handleAddAlbumToPlaylistDialogSave,
+        playlists: playlists,
+        title: albumToAdd ? `Add Album "${albumToAdd.albumPrefix}" to Playlist` : 'Add Album to Playlist'
+      })
     )
   );
 }
