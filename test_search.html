@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Search Query Test</title>
+</head>
+<body>
+    <h1>Search Query Test</h1>
+
+    <div>
+        <label for="searchTerm">Search Term:</label>
+        <input type="text" id="searchTerm" value="happy jazz">
+    </div>
+
+    <div>
+        <button id="allTracksButton">All Tracks</button>
+        <button id="vocalButton">Vocal</button>
+        <button id="soloButton">Solo</button>
+        <button id="instrumentalButton">Instrumental</button>
+    </div>
+
+    <div id="sqlDisplay">
+        <h2>SQL Query:</h2>
+        <pre id="query"></pre>
+        <h2>SQL Parameters:</h2>
+        <pre id="params"></pre>
+    </div>
+
+    <script>
+        const searchTermInput = document.getElementById('searchTerm');
+        const allTracksButton = document.getElementById('allTracksButton');
+        const vocalButton = document.getElementById('vocalButton');
+        const soloButton = document.getElementById('soloButton');
+        const instrumentalButton = document.getElementById('instrumentalButton');
+        const queryDisplay = document.getElementById('query');
+        const paramsDisplay = document.getElementById('params');
+
+        function displaySqlQuery(query, params) {
+            queryDisplay.textContent = query;
+            paramsDisplay.textContent = JSON.stringify(params, null, 2);
+        }
+
+        allTracksButton.addEventListener('click', () => {
+            const searchTerm = searchTermInput.value;
+            const query = `SELECT t.*, bm25(tracks_fts, 1.0, 0.5, 0.5) AS rank FROM tracks_fts JOIN tracks t ON t.rowid = tracks_fts.rowid WHERE tracks_fts MATCH ? ORDER BY rank DESC LIMIT 20`;
+            const params = [`"${searchTerm}"`];
+            displaySqlQuery(query, params);
+        });
+
+        vocalButton.addEventListener('click', () => {
+            const searchTerm = searchTermInput.value;
+            const query = `SELECT t.*, bm25(tracks_fts, 1.0, 0.5, 0.5) AS rank FROM tracks_fts JOIN tracks t ON t.rowid = tracks_fts.rowid WHERE tracks_fts MATCH ? AND t.vocal = 1 ORDER BY rank DESC LIMIT 20`;
+            const params = [`"${searchTerm}"`];
+            displaySqlQuery(query, params);
+        });
+
+        soloButton.addEventListener('click', () => {
+            const searchTerm = searchTermInput.value;
+            const query = `SELECT t.*, bm25(tracks_fts, 1.0, 0.5, 0.5) AS rank FROM tracks_fts JOIN tracks t ON t.rowid = tracks_fts.rowid WHERE tracks_fts MATCH ? AND t.solo = 1 ORDER BY rank DESC LIMIT 20`;
+            const params = [`"${searchTerm}"`];
+            displaySqlQuery(query, params);
+        });
+
+        instrumentalButton.addEventListener('click', () => {
+            const searchTerm = searchTermInput.value;
+            const query = `SELECT t.*, bm25(tracks_fts, 1.0, 0.5, 0.5) AS rank FROM tracks_fts JOIN tracks t ON t.rowid = tracks_fts.rowid WHERE tracks_fts MATCH ? AND t.vocal = 0 ORDER BY rank DESC LIMIT 20`;
+            const params = [`"${searchTerm}"`];
+            displaySqlQuery(query, params);
+        });
+    </script>
+</body>
+</html>

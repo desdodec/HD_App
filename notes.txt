@@ -1,0 +1,275 @@
+Project: Desktop Music App (Electron - Windows/macOS) - Comprehensive Prompt
+
+Goal: Develop a complete desktop music application using Electron (for Windows and macOS) that allows users to search, filter, play, and manage a collection of music tracks stored in a local PostgreSQL database. The application should feature a user-friendly interface with a sidebar for playlists, a main search area, a results table with interactive waveforms, and playlist management capabilities.
+
+Modularity Requirements (CRITICAL):
+
+*   **Strict Separation of Concerns:**  The application must be designed with a modular architecture, separating concerns into distinct modules:
+    *   **Database Interaction:** (Handles all interactions with the PostgreSQL database. Credentials are in `db.js` at the project root.)
+    *   **Playlist Management:** (Handles loading, creating, deleting, and modifying playlists.)
+    *   **Search and Filtering:** (Handles user input for searching and filtering tracks.)
+    *   **Playback and Waveform:** (Handles audio playback and interactive waveform display.)
+    *   **UI Rendering:** (Handles the overall layout and rendering of UI elements, coordinating the other modules.)
+
+*   **Well-Defined Interfaces:** Each module should interact with others through clearly defined interfaces (e.g., JavaScript classes, objects, or functions with well-defined parameters and return values). Changes within one module should *not* require changes in other modules, as long as the interfaces are maintained.
+
+Database:
+
+*   **Type:** Local PostgreSQL database (NOT Supabase).
+*   **Credentials:** Located in a `db.js` file at the root of the VSCode project.
+*   **Tables:**
+    *   `tracks`:
+        *   `id` (TEXT, PRIMARY KEY) - e.g., "CAR101_01"
+        *   `title` (TEXT)
+        *   `composer` (TEXT)
+        *   `version` (TEXT)
+        *   `keywords` (TEXT)
+        *   `cdtitle` (TEXT)
+        *   `description` (TEXT)
+        *   `library` (TEXT)
+        *   `releasedate` (DATE)
+        *   `vocal` (INTEGER) - 0 or 1
+        *   `solo` (INTEGER) - 0 or 1
+        *   `duration` (INTEGER) - Duration in seconds.
+        *   `filename` (TEXT)
+        * ... (any other relevant columns)
+    *   `playlists`:
+        *   `id` (INTEGER, PRIMARY KEY, AUTOINCREMENT)
+        *   `created_at` (TIMESTAMP)
+        *   `name` (TEXT, UNIQUE)
+    *   `playlist_tracks`:
+        *   `id` (INTEGER, PRIMARY KEY, AUTOINCREMENT)
+        *   `playlist_id` (INTEGER, FOREIGN KEY referencing playlists.id)
+        *   `track_id` (TEXT, FOREIGN KEY referencing tracks.id)
+        *   `duration` (INTEGER)
+        *   `title` (TEXT)
+        *   `library` (TEXT)
+        *   `cd_title` (TEXT)
+        *   `filename` (TEXT)
+
+Phases (Functionality Breakdown):
+
+1.  **Phase 1: Playlist Sidebar Initialization:**
+    *   On application startup, load all existing playlists from the `playlists` table.
+    *   Order the playlists initially by `created_at` (ascending).
+    *   Dynamically create a button in a sidebar for each playlist.
+        *   Button text: Playlist `name`.
+        *   Store playlist `id` and `name` as data attributes (or similar) on the button for later use.
+    *   Provide UI controls (buttons or dropdown) to allow users to sort the playlist buttons by name (alphabetically) or by creation date.
+    *   Provide a search box to filter the displayed playlist buttons by name.
+
+2.  **Phase 2: Search, Filtering, and Results Display:**
+    *   **Main Search Box:**
+        *   Input: Text.
+        *   Logic: AND search across `keywords` and `description` columns of the `tracks` table (both terms must be present in either column).
+        *   Matching: Exact word matches, case-insensitive.
+        *   Whitespace: Trim leading/trailing whitespace; treat multiple spaces as single space.
+        *   Special Characters: Escape special characters to prevent SQL injection.
+    *   **Filter Buttons (Mutually Exclusive):**
+        *   "All Tracks": No filter (default).
+        *   "Instrumentals": `vocal = 0`.
+        *   "Solo": `solo = 1`.
+        *   "Vocal": `vocal = 1`.
+    *   **Advanced Search Dropdown:**
+        *   Options: "All Tracks" (default), "id", "title", "composer", "version", "keywords", "cdtitle", "description", "library".
+        *   Behavior: Search within the selected column, combined with the main search box and filter button.
+        * If dropdown = "All Tracks", then ignore.
+
+    *  **Search Flexibility**
+        *   Examples:
+        *   Main Search: "happy funk", Dropdown: "library" = "Diskaire":  Find tracks in the "Diskaire" library with "happy" and "funk" in keywords or description.
+        *   Dropdown: "id" = "CAR101_01":  Find the track with that specific ID.
+    *   **Ordering:** Results by `releasedate` DESCENDING, then by `id` ASCENDING.
+    *   **Reset Button:** Clears all search/filter settings.
+    *   **Results Table:**
+        *   Columns: Album Cover, Play/Pause Button, ID, Title, Description (with tooltip), Duration (mm:ss), "Add to Playlist" Button (Phase 3), "Add Entire Album to Playlist" Button (Phase 3), Information Button, Download Button (Phase 4).
+        *   Pagination: 20 records per page, with "Go to Start", "Previous", "Next", "Go to End" controls and "x records of y" display.
+        *   File Paths:
+            *   Artwork: `artwork/[library]/[catalogue_number].jpg` (catalogue_number extracted from `id`).
+            *   Audio: `audio/mp3s/[library]/[catalogue_number] [cd_title]/[filename].mp3`
+            *   Waveform: `waveforms/[library]/[catalogue_number] [cd_title]/[filename].png` and `waveforms/[library]/[catalogue_number] [cd_title]/[filename]_over.png`
+
+3.  **Phase 3: Playback and Waveform Interaction:**
+    *   **AudioTrack Class:**
+        *   Encapsulates logic and UI for a single track.
+        *   Constructor takes: `id`, `audioSrc`, `waveformDarkSrc`, `waveformLightSrc`, `container` (DOM element).
+        *   Creates waveform container (fixed width, CSS), dark/light waveform images, play/pause button within the `container`.
+        *   Uses `new Audio()` or, preferably, `new Howl()` from Howler.js (include Howler.js if used).
+        *   Event listeners:
+            *   Waveform click: `handleWaveformClick` (seek, start playback if paused).
+            *   Play/pause button click: `togglePlayPause`.
+            *   Audio `timeupdate`: `updateProgress` (update light waveform width).
+            *   Audio `ended`: `reset` (reset progress, set button to "Play").
+            *   Audio `error`: `showError` (display error message).
+              *  Dark image 'error' set a fallback background color (e.g., `#333`) for the waveform container.
+            *   Light image 'error' - hide the image
+        *   Methods: `handleWaveformClick`, `togglePlayPause`, `play`, `pause`, `reset`, `updateProgress`, `showError`,`seekTo(percentage)`.
+    *   **AudioManager:**
+        *   Manages global audio state (single-track playback).
+        *   `currentTrack` property (initially `null`).
+        *   `play(audioTrack)` method: Pauses current track (if any), sets `currentTrack`, calls `audioTrack.play()`.
+        *  `pause()` method: Pauses current track (if any).
+    *   **Integration:** Create an `AudioTrack` instance for each track in the results table.
+
+4.  **Phase 4: Playlist Interactions:**
+    *   **Add to Playlist:** Add individual tracks to a playlist (selected from the sidebar).
+    *   **Add Entire Album to Playlist:** Add all tracks with the same catalogue number (derived from a track's ID) to a playlist.
+    *   **Play from Playlist:** Clicking a playlist button in the sidebar should:
+        *   Clear the current search results.
+        *   Display all tracks belonging to that playlist (using the provided SQL query: `SELECT ts.*, p.name FROM tracks_search ts JOIN playlist_Tracks pt ON ts.id = pt.track_id JOIN playlists p ON pt.playlist_id = p.id WHERE p.name = 'PlaylistName';`).
+        *   Use the same results table format as the main search, including waveforms and playback controls.
+    *   **Delete from Playlist:** Remove tracks from a playlist.
+    *   **Create Playlist:** Allow users to create new playlists (prompt for a name, handle duplicate names - show error).
+    *   **Delete Playlist:** Allow users to delete playlists (cascade delete entries in `playlist_tracks`).
+    *   **Playlist Reordering:**  Allow drag-and-drop reordering of tracks *within* a playlist.  This order should be persisted.
+
+5.  **Phase 5: Downloads:**
+     * **Download Track:** Download single track.
+    *   **Download Playlist:** Download all tracks within a playlist as a ZIP file.
+
+Error Handling and Edge Cases:
+
+*   **Empty Search:** Display "Please enter a search term" if all search/filter inputs are empty.
+*   **Duplicate Playlist Names:** Prompt the user if they try to create a playlist with an existing name.
+*   **Audio/Image Loading Errors:** Display appropriate error messages or fallback images.
+*   **General Errors:** Display JavaScript errors as red text at the bottom of the screen.
+* **Maximum Tracks per Playlist:** 1000
+*  **Loading State:** Display a spinner while data is loading.
+
+Output:
+
+- Explain the planned approach including technologies (Electron, Javascript etc)
+-Plan the code to implement, making clear how the modules link.
+- Generate the code.
+
+
+Project Title:
+Desktop Music App (Electron – Windows/macOS)
+
+Overall Goal:
+Create a fully featured desktop music application that enables users to search, filter, play, and manage a collection of music tracks stored in a local PostgreSQL database. The application must include a playlist sidebar, advanced search functionality, an interactive results table with audio waveforms, robust playlist management (including drag-and-drop reordering), and download capabilities for both individual tracks and entire playlists (packaged as ZIP files).
+
+Technology Stack & Core Approaches
+Electron:
+Use Electron to build a cross-platform desktop application for Windows and macOS. Electron will manage the native windowing, file system access, and system dialogs.
+
+React for the UI:
+Implement the user interface with React. Use functional components, React Hooks for local state, and the Context API for managing global state. The UI will be modular, consisting of components such as the Playlist Sidebar, Search Area, Results Table, and Download Status display.
+
+Raw SQL for Database Interaction:
+All database operations will be performed using raw SQL against a local PostgreSQL database. Every query must use parameterized inputs to prevent SQL injection. The PostgreSQL connection details will be stored securely (for example, in a dedicated configuration file at the project root).
+
+Centralized Event Bus:
+Implement a centralized event bus using Node.js’s event emitter functionality. This bus will facilitate communication between decoupled modules by emitting events (such as when a playlist is created, updated, or reordered, or when a download starts, progresses, or completes) and listening for these events to update the UI or trigger further actions.
+
+Drag-and-Drop Functionality:
+Integrate drag-and-drop reordering in the Playlist Sidebar using the react-beautiful-dnd library. This will allow users to intuitively rearrange tracks within a playlist, with the new order being persisted to the database via raw SQL updates.
+
+Audio Playback and Waveform Display:
+Manage audio playback through a dedicated module that encapsulates a single track’s controls. This module should handle play, pause, seek (triggered by interactions with an interactive waveform), and error handling. Audio playback may use the native Audio API or a library such as Howler.js. A global AudioManager will ensure that only one track plays at any given time, and all playback-related events will be relayed via the event bus.
+
+Download Functionality:
+Implement robust download capabilities:
+
+For single tracks, prompt the user with a native save dialog (using Electron’s dialog module), construct the file path securely, and copy the audio file from its source to the chosen destination.
+For playlists, bundle all the tracks into a ZIP file. Use a well-tested library (such as archiver) to generate the ZIP file on the fly, ensuring that files are organized (for example, by album or artist) to avoid naming conflicts. Provide real-time UI feedback during the download process, including progress indicators and error notifications.
+2. Database Schema and Query Details
+Database Structure:
+The application uses a local PostgreSQL database with three main tables:
+
+Tracks Table:
+
+Contains columns for the track identifier (a TEXT primary key, e.g., "CAR101_01"), title, composer, version, keywords, CD title, description, library name, release date, vocal flag (0 or 1), solo flag (0 or 1), duration (in seconds), and filename.
+Additional columns may be added as necessary.
+Playlists Table:
+
+Contains an auto-incremented INTEGER primary key, a timestamp for creation (created_at), and a unique name for each playlist.
+Playlist Tracks Table:
+
+Maps tracks to playlists using foreign keys (playlist_id referencing the playlists table and track_id referencing the tracks table).
+Includes additional columns for track duration, title, library, CD title, filename, and optionally, an ordering column to preserve the user-defined order from drag-and-drop actions.
+Query Requirements and Security:
+
+Every database query must be written as raw SQL and must use parameterized inputs (using placeholders such as $1, $2, etc.) to prevent SQL injection.
+Common operations include:
+Fetching a single track by its ID.
+Performing advanced searches that combine AND searches across the keywords and description columns using ILIKE for case-insensitive matching.
+Applying filters (for example, filtering on the vocal or solo columns) by dynamically adding secure SQL conditions.
+Ordering the search results by the release date in descending order and then by the track ID in ascending order.
+Implementing pagination by limiting the number of records per page (for example, 20 records) and using an offset to navigate pages.
+3. File Path Construction and Management
+File Path Conventions:
+The application must dynamically construct file paths for various resources using Node.js’s path module to ensure platform-independent path management.
+Artwork Files: Located in a folder structure that follows the pattern:
+artwork/[library]/[catalogue_number].jpg
+where the catalogue number is extracted from the track’s ID.
+Audio Files: Located in a directory with the following pattern:
+audio/mp3s/[library]/[catalogue_number] [cd_title]/[filename].mp3
+Waveform Images: Located in the waveforms folder and include two variants:
+The primary waveform image:
+waveforms/[library]/[catalogue_number] [cd_title]/[filename].png
+A highlighted or overlay variant:
+waveforms/[library]/[catalogue_number] [cd_title]/[filename]_over.png
+Best Practices for Path Building:
+Always use Node.js’s built-in path.join method to concatenate directory and file names.
+Ensure that any dynamic data used in file paths (like library names, catalogue numbers, or filenames) is sanitized to prevent directory traversal or other security issues.
+Store base paths (for example, the root directories for audio, artwork, and waveforms) in configuration files or environment variables.
+4. Module Communication via a Centralized Event Bus
+Purpose and Implementation:
+A centralized event bus, implemented using Node.js’s event emitter functionality, will be used to decouple module interactions.
+Modules such as the playlist manager, playback controller, and download manager will emit events (e.g., playlistCreated, playlistReordered, downloadStarted, downloadProgress, downloadComplete, playbackStarted, playbackPaused, playbackError) to inform the rest of the system about state changes.
+The UI components will listen for these events to update the display in real time, ensuring that the system remains responsive and that modules remain independent.
+5. User Interface and State Management (React)
+UI Components and Layout:
+The UI will be constructed entirely in React. Key components include:
+Playlist Sidebar: Displays all playlists retrieved from the database. It allows sorting (by name or creation date), filtering via a search box, and supports drag-and-drop reordering using react-beautiful-dnd.
+Search Area: Contains a primary search input, filter buttons (for instrumentals, vocal, solo tracks), and an advanced dropdown to limit search queries to specific columns (such as id, title, or composer).
+Results Table: Displays track details in a paginated format (20 records per page), including album artwork, play/pause controls, interactive waveforms, and buttons for adding tracks to playlists or initiating downloads.
+Playback Controls: The waveform display for each track updates dynamically as audio plays. The UI should reflect play, pause, and seek operations and provide immediate feedback in case of errors.
+Download Status Display: A dedicated component provides real-time progress information for ongoing downloads, including spinners, progress bars, or textual notifications.
+State Management:
+Use React Hooks (such as useState and useEffect) for managing local component state.
+For global state (such as the current playlist, search filters, or active track), use the Context API. This ensures that multiple components can share and update state seamlessly.
+6. Download Functionality and Best Practices
+Single Track Download:
+When a user initiates a download for a single track, the application will prompt for a destination file path using Electron’s native dialog.
+The application constructs the source file path using the previously defined conventions, then securely copies the file to the chosen destination.
+All file operations must be performed securely, ensuring that file paths are built using Node.js’s path module and that the process is protected against potential overwrites or directory traversal vulnerabilities.
+The download process will emit events to indicate start, progress, and completion, so the UI can provide appropriate feedback.
+Playlist Download (ZIP Generation):
+For downloading an entire playlist, the application must bundle all associated audio files into a single ZIP file.
+The process involves iterating over each track in the playlist, constructing its audio file path, and adding it to the ZIP archive. Files should be organized (for example, grouped by album or artist) to avoid naming conflicts.
+Use a reliable library to create ZIP files, and ensure that the operation is monitored with progress events. These events will allow the UI to display a progress bar or spinner and inform the user of any errors during the bundling process.
+The final ZIP file should be saved to a user-selected destination, and the application must handle errors gracefully by providing clear notifications and logging.
+7. Error Handling, Validation, and Security
+Validation:
+
+All user inputs, including search terms and playlist names, must be validated. For example, enforce that search queries are non-empty and that new playlists have unique names.
+Sanitize any dynamic input used for constructing file paths or database queries.
+Error Handling:
+
+Wrap all file operations, database queries, and asynchronous processes in robust error-handling mechanisms (such as try/catch blocks).
+Use the event bus to emit error events that can be captured by the UI, ensuring that users receive immediate, understandable error messages.
+Log errors to facilitate debugging and future improvements.
+Security Measures:
+
+All SQL queries must be parameterized to prevent injection attacks.
+File paths must be constructed using safe methods to avoid security vulnerabilities such as directory traversal.
+Limit file access to necessary directories only, and configure proper permissions for file operations within the Electron environment.
+8. Integration and Communication Overview
+Module Decoupling:
+Each module (database, playlist management, search, playback, download, UI) will operate independently, communicating exclusively via the centralized event bus. This approach allows changes in one module to occur without requiring modifications in others, as long as the defined interfaces remain consistent.
+
+Workflow Example:
+When a user creates a new playlist, the Playlist Management Module inserts the playlist into the PostgreSQL database using a parameterized raw SQL query. It then emits a “playlistCreated” event on the event bus. The Playlist Sidebar component (in React) listens for this event and updates its display accordingly. Similarly, when a download begins, the Download Module emits “downloadStarted” and “downloadProgress” events to update the Download Status component in real time.
+
+Final Deliverables:
+
+A fully functional Desktop Music App built with Electron, featuring:
+Secure, parameterized raw SQL database interactions.
+A React-based UI with clearly defined, responsive components.
+Drag-and-drop playlist reordering using react-beautiful-dnd.
+Interactive audio playback with dynamic waveform displays.
+Robust download functionality for both individual tracks and entire playlists, complete with progress feedback and error handling.
+Detailed documentation explaining the architecture, module interactions via the event bus, and all the specifics of database queries, file path construction, and secure operations.
+Comprehensive testing and validation to ensure that all modules work together seamlessly and securely.

@@ -1,0 +1,24 @@
+{
+  "name": "desktop-music-app",
+  "version": "1.0.0",
+  "description": "A desktop music application built with Electron and React",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron ."
+  },
+  "keywords": [],
+  "author": "Roo",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "archiver": "^6.0.1",
+    "electron": "^28.2.0",
+    "react": "^18.2.0",
+    "react-beautiful-dnd": "^13.1.1",
+    "react-dom": "^18.2.0",
+    "sqlite3": "^5.1.7"
+  },
+  "devDependencies": {
+    "electron-reloader": "^1.2.3"
+  }
+}
