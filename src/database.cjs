@@ -1,10 +1,13 @@
 const db = require('../db.cjs');
 
-const getTracks = async (searchTerm, filter, dropdownFilterColumn, dropdownSearchTerm) => {
-  console.log('getTracks called with: searchTerm:', searchTerm, 'filter:', filter, 'dropdownFilterColumn:', dropdownFilterColumn, 'dropdownSearchTerm:', dropdownSearchTerm); // Added log
+const getTracks = async (searchTerm, filter, dropdownFilterColumn, dropdownSearchTerm, page = 1, limit = 20) => {
+  console.log('getTracks called with: searchTerm:', searchTerm, 'filter:', filter, 'dropdownFilterColumn:', dropdownFilterColumn, 'dropdownSearchTerm:', dropdownSearchTerm, 'page:', page, 'limit:', limit); // Added log
   return new Promise((resolve, reject) => {
-    let query = `SELECT t.*,
+    let baseQuery = `SELECT t.*,
                        bm25(tracks_fts, 1.0, 0.5, 0.5) AS rank
+                FROM tracks_fts
+                JOIN tracks t ON t.rowid = tracks_fts.rowid`;
+    let countQuery = `SELECT COUNT(*) as total
                 FROM tracks_fts
                 JOIN tracks t ON t.rowid = tracks_fts.rowid`;
     let params = [];
@@ -27,23 +30,52 @@ const getTracks = async (searchTerm, filter, dropdownFilterColumn, dropdownSearc
       whereClauses.push(`LOWER(t.${dropdownFilterColumn}) LIKE LOWER('%${dropdownSearchTerm}%')`);
     }
 
+    let whereClause = '';
     if (whereClauses.length > 0) {
-      query += ' WHERE ' + whereClauses.join(' AND ');
+      whereClause = ' WHERE ' + whereClauses.join(' AND ');
+      baseQuery += whereClause;
+      countQuery += whereClause;
     }
 
-    query += ` ORDER BY rank DESC
-               LIMIT 20`;
+    // Add pagination
+    const offset = (page - 1) * limit;
+    baseQuery += ` ORDER BY rank DESC
+               LIMIT ${limit} OFFSET ${offset}`;
 
-    console.log('SQL Query:', query);
+    console.log('SQL Query:', baseQuery);
     console.log('SQL Params:', params);
 
-    db.all(query, params, (err, rows) => {
+    // First get the total count
+    db.get(countQuery, params, (err, countRow) => {
       if (err) {
-        console.error('Error fetching tracks', err);
+        console.error('Error counting tracks', err);
         reject(err);
-      } else {
-        resolve(rows);
+        return;
       }
+
+      const totalResults = countRow.total;
+      const totalPages = Math.ceil(totalResults / limit);
+
+      // Then get the results for the current page
+      db.all(baseQuery, params, (err, rows) => {
+        if (err) {
+          console.error('Error fetching tracks', err);
+          reject(err);
+        } else {
+          // Add the search parameters to each result for use in pagination
+          const resultsWithParams = rows.map(row => ({
+            ...row,
+            lastSearchParams: { searchTerm, filter, dropdownFilterColumn, dropdownSearchTerm }
+          }));
+
+          resolve({
+            results: resultsWithParams,
+            totalResults,
+            totalPages,
+            currentPage: page
+          });
+        }
+      });
     });
   });
 };
