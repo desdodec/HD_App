@@ -141,9 +141,146 @@ const createDefaultPlaylist = async () => {
   }
 };
 
+const deletePlaylist = async (playlistId) => {
+  return new Promise((resolve, reject) => {
+    // First, delete associated tracks from playlist_tracks
+    db.run('DELETE FROM playlist_tracks WHERE playlist_id = ?', [playlistId], (err) => {
+      if (err) {
+        console.error('Error deleting playlist tracks', err);
+        reject(err);
+        return;
+      }
+      
+      // Then, delete the playlist itself
+      db.run('DELETE FROM playlists WHERE id = ?', [playlistId], function(err) {
+        if (err) {
+          console.error('Error deleting playlist', err);
+          reject(err);
+        } else {
+          resolve({ id: playlistId, changes: this.changes });
+        }
+      });
+    });
+  });
+};
+
+const getPlaylistTracks = async (playlistName) => {
+  return new Promise((resolve, reject) => {
+    const query = `
+      SELECT t.*, p.name as playlist_name
+      FROM tracks t
+      JOIN playlist_tracks pt ON t.id = pt.track_id
+      JOIN playlists p ON pt.playlist_id = p.id
+      WHERE p.name = ?
+      ORDER BY pt.ordering ASC
+    `;
+    
+    db.all(query, [playlistName], (err, rows) => {
+      if (err) {
+        console.error('Error fetching playlist tracks', err);
+        reject(err);
+      } else {
+        resolve(rows);
+      }
+    });
+  });
+};
+
+const addTrackToPlaylist = async (playlistId, trackId, trackData) => {
+  return new Promise((resolve, reject) => {
+    // Get the highest ordering value for this playlist
+    db.get('SELECT MAX(ordering) as maxOrder FROM playlist_tracks WHERE playlist_id = ?', [playlistId], (err, row) => {
+      if (err) {
+        console.error('Error getting max ordering', err);
+        reject(err);
+        return;
+      }
+      
+      const nextOrder = (row && row.maxOrder !== null) ? row.maxOrder + 1 : 0;
+      
+      // Insert the track into the playlist
+      const { title, duration, library, cd_title, filename } = trackData || {};
+      db.run(
+        'INSERT INTO playlist_tracks (playlist_id, track_id, duration, title, library, cd_title, filename, ordering) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [playlistId, trackId, duration || 0, title || '', library || '', cd_title || '', filename || '', nextOrder],
+        function(err) {
+          if (err) {
+            console.error('Error adding track to playlist', err);
+            reject(err);
+          } else {
+            resolve({ id: this.lastID, playlistId, trackId, ordering: nextOrder });
+          }
+        }
+      );
+    });
+  });
+};
+
+const addAlbumToPlaylist = async (playlistId, albumPrefix, tracks) => {
+  return new Promise((resolve, reject) => {
+    // Start a transaction
+    db.run('BEGIN TRANSACTION', async (err) => {
+      if (err) {
+        console.error('Error beginning transaction', err);
+        reject(err);
+        return;
+      }
+      
+      try {
+        // Get all tracks with IDs matching the album prefix
+        const albumTracks = tracks.filter(track => track.id.startsWith(albumPrefix));
+        
+        // Get the highest ordering value for this playlist
+        const row = await new Promise((resolve, reject) => {
+          db.get('SELECT MAX(ordering) as maxOrder FROM playlist_tracks WHERE playlist_id = ?', [playlistId], (err, row) => {
+            if (err) reject(err);
+            else resolve(row);
+          });
+        });
+        
+        let nextOrder = (row && row.maxOrder !== null) ? row.maxOrder + 1 : 0;
+        
+        // Add each track to the playlist
+        for (const track of albumTracks) {
+          await new Promise((resolve, reject) => {
+            db.run(
+              'INSERT INTO playlist_tracks (playlist_id, track_id, duration, title, library, cd_title, filename, ordering) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+              [playlistId, track.id, track.duration || 0, track.title || '', track.library || '', track.cd_title || '', track.filename || '', nextOrder++],
+              function(err) {
+                if (err) reject(err);
+                else resolve({ id: this.lastID });
+              }
+            );
+          });
+        }
+        
+        // Commit the transaction
+        db.run('COMMIT', (err) => {
+          if (err) {
+            console.error('Error committing transaction', err);
+            reject(err);
+          } else {
+            resolve({ success: true, count: albumTracks.length });
+          }
+        });
+      } catch (error) {
+        // Rollback the transaction on error
+        db.run('ROLLBACK', () => {
+          console.error('Transaction rolled back due to error', error);
+          reject(error);
+        });
+      }
+    });
+  });
+};
+
 module.exports = {
   getTracks,
   getPlaylists,
   createPlaylist,
   createDefaultPlaylist,
+  deletePlaylist,
+  getPlaylistTracks,
+  addTrackToPlaylist,
+  addAlbumToPlaylist,
 };
